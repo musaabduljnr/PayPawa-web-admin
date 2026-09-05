@@ -29,9 +29,15 @@ export interface SupportCaseListItem {
   escalated_to_department?: EscalationDepartment;
   subject: string;
   description: string;
+  related_meter_id?: string;
+  related_wallet_tx_id?: string;
+  related_electricity_tx_id?: string;
+  internal_reference?: string;
+  provider_reference?: string;
   resolution_notes?: string;
   resolved_at?: string;
   closed_at?: string;
+  reopened_at?: string;
   created_at: string;
   updated_at: string;
   notes_count: number;
