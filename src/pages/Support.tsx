@@ -66,7 +66,7 @@ export const Support: React.FC = () => {
 
   // New Note State
   const [newNoteText, setNewNoteText] = useState('');
-  const [newNoteIsInternal, setNewNoteIsInternal] = useState(true);
+  const [newNoteIsInternal, setNewNoteIsInternal] = useState(false);
   const [submittingNote, setSubmittingNote] = useState(false);
 
   // Status Change Modal State
@@ -1463,67 +1463,119 @@ export const Support: React.FC = () => {
                   )}
                 </div>
 
-                {/* Add Note Form */}
+                {/* Add Note / Reply Form */}
                 <PermissionGate permission="support.manage">
                   <form
                     onSubmit={handleAddNote}
                     className="card"
                     style={{ padding: '16px 20px', backgroundColor: 'var(--bg-secondary)' }}
                   >
-                    <h4 style={{ fontSize: '13.5px', fontWeight: 600, marginBottom: '10px', color: 'var(--text-primary)' }}>
-                      Add Note to Case
-                    </h4>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                      <h4 style={{ fontSize: '13.5px', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                        {!newNoteIsInternal ? 'Reply to Customer' : 'Add Internal Staff Note'}
+                      </h4>
+                      {/* Segmented Mode Selector */}
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setNewNoteIsInternal(false)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '5px 12px',
+                            borderRadius: 'var(--radius-sm)',
+                            fontSize: '11.5px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            border: !newNoteIsInternal ? '1px solid #10b981' : '1px solid var(--border-default)',
+                            backgroundColor: !newNoteIsInternal ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-tertiary)',
+                            color: !newNoteIsInternal ? '#10b981' : 'var(--text-secondary)',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Send size={11} />
+                          Customer Reply
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewNoteIsInternal(true)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '5px 12px',
+                            borderRadius: 'var(--radius-sm)',
+                            fontSize: '11.5px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            border: newNoteIsInternal ? '1px solid #f59e0b' : '1px solid var(--border-default)',
+                            backgroundColor: newNoteIsInternal ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-tertiary)',
+                            color: newNoteIsInternal ? '#f59e0b' : 'var(--text-secondary)',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Lock size={11} />
+                          Staff Note Only
+                        </button>
+                      </div>
+                    </div>
 
                     <textarea
                       className="form-control"
                       rows={3}
-                      placeholder="Type your internal note or public response here..."
+                      placeholder={
+                        newNoteIsInternal
+                          ? 'Type a confidential staff note (will NOT be sent to customer)...'
+                          : 'Type your reply to the customer (will immediately appear in their mobile app)...'
+                      }
                       value={newNoteText}
                       onChange={(e) => setNewNoteText(e.target.value)}
                       style={{
                         width: '100%',
                         padding: '10px 12px',
                         backgroundColor: 'var(--bg-input)',
-                        border: '1px solid var(--border-default)',
+                        border: !newNoteIsInternal ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(245, 158, 11, 0.5)',
                         borderRadius: 'var(--radius-md)',
                         color: 'var(--text-primary)',
                         fontSize: '13px',
-                        marginBottom: '12px',
+                        marginBottom: '10px',
                         resize: 'vertical',
                       }}
                     />
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                      <label
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          fontSize: '12.5px',
-                          color: 'var(--text-primary)',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={newNoteIsInternal}
-                          onChange={(e) => setNewNoteIsInternal(e.target.checked)}
-                          style={{ accentColor: 'var(--accent-primary)' }}
-                        />
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Lock size={12} color="#f59e0b" />
-                          <strong>Internal Staff Note</strong> (Confidential to staff only)
-                        </span>
-                      </label>
+                      <div style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {!newNoteIsInternal ? (
+                          <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle2 size={13} />
+                            <strong>Public Response:</strong> Will notify customer & update ticket badge in mobile app.
+                          </span>
+                        ) : (
+                          <span style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Lock size={13} />
+                            <strong>Private Note:</strong> Kept strictly internal to staff operators.
+                          </span>
+                        )}
+                      </div>
 
                       <button
                         type="submit"
                         className="btn btn-primary"
                         disabled={submittingNote || !newNoteText.trim()}
-                        style={{ padding: '7px 16px', fontSize: '12.5px' }}
+                        style={{
+                          padding: '7px 18px',
+                          fontSize: '12.5px',
+                          backgroundColor: !newNoteIsInternal ? '#10b981' : '#d97706',
+                          borderColor: !newNoteIsInternal ? '#10b981' : '#d97706',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
                       >
-                        <Send size={14} />
-                        {submittingNote ? 'Posting...' : 'Post Note'}
+                        {!newNoteIsInternal ? <Send size={13} /> : <Lock size={13} />}
+                        {submittingNote ? 'Sending...' : !newNoteIsInternal ? 'Send Customer Reply' : 'Save Staff Note'}
                       </button>
                     </div>
                   </form>
