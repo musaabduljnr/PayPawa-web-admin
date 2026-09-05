@@ -61,6 +61,7 @@ export const Support: React.FC = () => {
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [caseDetails, setCaseDetails] = useState<SupportCaseDetailsResponse | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'context' | 'notes'>('overview');
 
   // New Note State
@@ -162,12 +163,18 @@ export const Support: React.FC = () => {
   const handleOpenCase = async (caseId: string) => {
     setSelectedCaseId(caseId);
     setDetailsLoading(true);
+    setDetailsError(null);
     setActiveDetailTab('overview');
     try {
       const res = await AdminSupportService.getCaseDetails(caseId);
       if (res.success) {
         setCaseDetails(res);
+        setDetailsError(null);
+      } else {
+        setDetailsError(res.error || 'Failed to load case details.');
       }
+    } catch (err: any) {
+      setDetailsError(err.message || 'An unexpected error occurred while loading ticket details.');
     } finally {
       setDetailsLoading(false);
     }
@@ -175,9 +182,14 @@ export const Support: React.FC = () => {
 
   const refreshSelectedCase = async () => {
     if (!selectedCaseId) return;
-    const res = await AdminSupportService.getCaseDetails(selectedCaseId);
-    if (res.success) {
-      setCaseDetails(res);
+    try {
+      const res = await AdminSupportService.getCaseDetails(selectedCaseId);
+      if (res.success) {
+        setCaseDetails(res);
+        setDetailsError(null);
+      }
+    } catch (err) {
+      console.warn('Failed to refresh case details:', err);
     }
     fetchCases();
   };
@@ -823,6 +835,7 @@ export const Support: React.FC = () => {
         onClose={() => {
           setSelectedCaseId(null);
           setCaseDetails(null);
+          setDetailsError(null);
         }}
         title={
           caseDetails?.case
@@ -830,10 +843,27 @@ export const Support: React.FC = () => {
             : 'Support Case Context'
         }
       >
-        {detailsLoading || !caseDetails ? (
+        {detailsLoading ? (
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
             <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 12px', display: 'block' }} />
             Loading live customer context and ticket details...
+          </div>
+        ) : detailsError || !caseDetails ? (
+          <div style={{ padding: '40px', textAlign: 'center' }}>
+            <AlertCircle size={32} color="var(--danger)" style={{ margin: '0 auto 12px', display: 'block' }} />
+            <p style={{ color: 'var(--danger)', fontWeight: 600, marginBottom: '8px' }}>
+              {detailsError || 'Unable to load case details'}
+            </p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px' }}>
+              There was an issue retrieving the customer context for this ticket.
+            </p>
+            <button
+              className="btn btn-secondary"
+              onClick={() => selectedCaseId && handleOpenCase(selectedCaseId)}
+            >
+              <RefreshCw size={14} style={{ marginRight: '6px' }} />
+              Retry Loading Context
+            </button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>

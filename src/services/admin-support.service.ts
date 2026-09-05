@@ -209,10 +209,32 @@ export class AdminSupportService {
         p_case_id: caseId,
       });
 
-      if (error) {
+      if (!error && (data as any)?.success) {
+        return data as SupportCaseDetailsResponse;
+      }
+    } catch {
+      // RPC failed, fall through to direct query fallback
+    }
+
+    try {
+      // Direct Fallback Implementation: fetch case and customer context safely
+      const { data: sc, error: scErr } = await (supabase as any)
+        .from('support_cases')
+        .select(`
+          *,
+          staff_members:assigned_staff_id (
+            id,
+            profiles:user_id (full_name, email),
+            roles:role_id (display_name)
+          )
+        `)
+        .eq('id', caseId)
+        .single();
+
+      if (scErr || !sc) {
         return {
           success: false,
-          error: error.message,
+          error: scErr?.message || 'CASE_NOT_FOUND',
           case: {} as any,
           customer: {} as any,
           meters: [],
@@ -223,11 +245,179 @@ export class AdminSupportService {
         };
       }
 
-      return data as SupportCaseDetailsResponse;
+      // 1. Customer profile
+      const { data: customerData } = await (supabase as any)
+        .from('profiles')
+        .select('id, full_name, email, phone, account_type, is_onboarded, created_at')
+        .eq('id', sc.customer_id)
+        .maybeSingle();
+
+      const customer: CustomerContextProfile = customerData || {
+        id: sc.customer_id,
+        full_name: 'Customer',
+        email: '',
+        account_type: 'individual',
+        is_onboarded: false,
+        created_at: sc.created_at,
+      };
+
+      // 2. Meters
+      const { data: metersData } = await (supabase as any)
+        .from('meters')
+        .select('id, meter_number, disco_code, disco_name, meter_type, customer_name, address, is_active, created_at')
+        .eq('user_id', sc.customer_id)
+        .order('is_active', { ascending: false });
+
+      const meters: CustomerContextMeter[] = (metersData || []).map((m: any) => ({
+        id: m.id,
+        meter_number: m.meter_number,
+        disco_code: m.disco_code,
+        disco_name: m.disco_name,
+        meter_type: m.meter_type,
+        customer_name: m.customer_name,
+        address: m.address,
+        is_primary: Boolean(m.is_active),
+        created_at: m.created_at,
+      }));
+
+      // 3. Transactions
+      const { data: txsData } = await (supabase as any)
+        .from('electricity_transactions')
+        .select('id, meter_number, disco_code, amount_kobo, units_kwh, token, status, reference, created_at')
+        .eq('user_id', sc.customer_id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      const transactions: CustomerContextTransaction[] = (txsData || []).map((t: any) => ({
+        id: t.id,
+        meter_number: t.meter_number,
+        disco_code: t.disco_code,
+        amount_kobo: t.amount_kobo,
+        units_kwh: t.units_kwh,
+        token: t.token,
+        status: t.status,
+        reference: t.reference,
+        created_at: t.created_at,
+      }));
+
+      // 4. Wallet & ledger entries
+      const { data: walletData } = await (supabase as any)
+        .from('wallet_accounts')
+        .select('id, balance_kobo, currency, is_locked')
+        .eq('user_id', sc.customer_id)
+        .maybeSingle();
+
+      let recent_entries: any[] = [];
+      if (walletData?.id) {
+        const { data: entries } = await (supabase as any)
+          .from('wallet_transactions')
+          .select('id, type, amount_kobo, balance_after_kobo, reference, description, created_at')
+          .eq('wallet_id', walletData.id)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        recent_entries = entries || [];
+      }
+
+      const wallet: CustomerContextWallet = {
+        wallet_id: walletData?.id || '',
+        balance_kobo: walletData?.balance_kobo || 0,
+        currency: walletData?.currency || 'NGN',
+        is_locked: walletData?.is_locked || false,
+        recent_entries,
+      };
+
+      // 5. Payment attempts
+      const { data: paymentsData } = await (supabase as any)
+        .from('payment_attempts')
+        .select('id, amount_kobo, provider, status, reference, created_at, updated_at')
+        .eq('user_id', sc.customer_id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      const payments: CustomerContextPayment[] = (paymentsData || []).map((p: any) => ({
+        id: p.id,
+        amount_kobo: p.amount_kobo,
+        provider: p.provider,
+        status: p.status,
+        reference: p.reference,
+        created_at: p.created_at,
+        verified_at: p.updated_at,
+      }));
+
+      // 6. Case Notes
+      const { data: notesData } = await (supabase as any)
+        .from('support_case_notes')
+        .select(`
+          id,
+          case_id,
+          author_user_id,
+          is_internal,
+          note,
+          created_at,
+          profiles:author_user_id (full_name, email)
+        `)
+        .eq('case_id', caseId)
+        .order('created_at', { ascending: true });
+
+      const notes: SupportCaseNoteItem[] = (notesData || []).map((n: any) => ({
+        id: n.id,
+        case_id: n.case_id,
+        author_user_id: n.author_user_id,
+        author_name: n.profiles?.full_name || 'Staff Specialist',
+        author_email: n.profiles?.email || undefined,
+        is_internal: n.is_internal,
+        note: n.note,
+        created_at: n.created_at,
+      }));
+
+      const assignedStaff = sc.staff_members;
+      const formattedCase: SupportCaseListItem = {
+        id: sc.id,
+        case_number: sc.case_number,
+        customer_id: sc.customer_id,
+        customer_name: customer.full_name || 'Customer',
+        customer_email: customer.email || '',
+        customer_phone: customer.phone || undefined,
+        category: sc.category,
+        priority: sc.priority,
+        status: sc.status,
+        assigned_staff_id: sc.assigned_staff_id,
+        assigned_staff_name: assignedStaff?.profiles?.full_name || undefined,
+        assigned_staff_email: assignedStaff?.profiles?.email || undefined,
+        assigned_staff_role: assignedStaff?.roles?.display_name || undefined,
+        escalated_to_department: sc.escalated_to_department,
+        subject: sc.subject,
+        description: sc.description,
+        related_meter_id: sc.related_meter_id,
+        related_wallet_tx_id: sc.related_wallet_tx_id,
+        related_electricity_tx_id: sc.related_electricity_tx_id,
+        internal_reference: sc.internal_reference,
+        provider_reference: sc.provider_reference,
+        resolution_notes: sc.resolution_notes,
+        resolved_at: sc.resolved_at,
+        closed_at: sc.closed_at,
+        reopened_at: sc.reopened_at,
+        created_at: sc.created_at,
+        updated_at: sc.updated_at,
+        notes_count: notes.length,
+        internal_notes_count: notes.filter(n => n.is_internal).length,
+      };
+
+      return {
+        success: true,
+        case: formattedCase,
+        customer,
+        meters,
+        transactions,
+        wallet,
+        payments,
+        notes,
+      };
     } catch (err: any) {
+      console.error('[AdminSupportService] Error in getCaseDetails fallback:', err);
       return {
         success: false,
-        error: err.message,
+        error: err.message || 'Unable to retrieve case details',
         case: {} as any,
         customer: {} as any,
         meters: [],
